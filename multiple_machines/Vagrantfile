@@ -1,0 +1,41 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# Sources:
+# Tero Karvinen: https://terokarvinen.com/2018/automatically-provision-vagrant-virtualmachines-as-salt-slaves/
+# Niko Heiskanen: https://heiskanen.rocks/server_management/h1 
+
+# Define your Master's IP first
+# Define, how many machines you want in: $minion_count = 
+# Define machines you want to create, for example debian/bullseye64
+
+$common = <<COMMON
+apt update -y
+sudo apt install bash-completion -y
+COMMON
+
+$minion = <<MINION
+apt install salt-minion -qy
+sed -i 's/\#master\:.*/master\:\ MASTER_IP_HERE' /etc/salt/minion
+systemctl restart salt-minion
+MINION
+
+$minion_count = NUMBER_HERE
+
+Vagrant.configure("2") do |config|
+        config.vm.provision "add thing", type: "shell", inline: $common
+        config.vm.box = "MACHINE_SOURCE_HERE"
+
+        (1..$minion_count).each do |i|
+                config.vm.define "minion#{i}" do |slave|
+                        slave.vm.provision "final", type: "shell", inline: $minion
+                        slave.vm.network "private_network", type: "dhcp"
+                        slave.vm.hostname = "minion#{i}"
+			slave.vm.provider "virtualbox" do |v|
+				v.memory = 512
+				v.cpus = 1
+				v.name = "Vagrant-Minion#{i}"
+			end
+		end
+	end
+end

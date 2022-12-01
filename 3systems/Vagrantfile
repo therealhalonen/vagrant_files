@@ -1,0 +1,137 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# WIP: EXPERIMENTAL SCRIPTS!!! USE WITH CAUTION, OR DONT USE AT ALL :D!
+
+# Sources:
+# https://gist.github.com/santrancisco/a7183470efa0e3412222670d0bfb3da5
+# Tero Karvinen: https://terokarvinen.com/2018/automatically-provision-vagrant-virtualmachines-as-salt-slaves/
+# Niko Heiskanen: https://heiskanen.rocks/server_management/h1 
+
+VAGRANTFILE_API_VERSION = "2"
+system("
+	if [ #{ARGV[0]} = 'up' ]; then
+		VBoxManage setproperty machinefolder $PWD
+	else
+		VBoxManage setproperty machinefolder $(cat default_path)
+	fi
+")
+# Provision Debian
+$minion1 = <<MINION1
+apt update -y
+sudo apt install bash-completion -y
+apt install salt-minion -qy
+sed -i 's/\#master\:.*/master\:\ 192.168.56.1/g' /etc/salt/minion
+systemctl restart salt-minion
+MINION1
+
+# Provision Fedora
+$minion2 = <<MINION2
+dnf check-update -y
+sudo dnf install bash-completion -y
+dnf install salt-minion -qy
+sed -i 's/\#master\:.*/master\:\ 192.168.56.1/g' /etc/salt/minion
+systemctl restart salt-minion
+MINION2
+
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  # Debian
+  config.vm.define "Debian" do |debian|
+    debian.vm.box = "debian/bullseye64"
+    debian.vm.hostname = "debian-vagrant"
+    debian.vm.network :private_network, ip: "192.168.56.201"
+    debian.vm.provision "final", type: "shell", inline: $minion1
+	debian.vm.synced_folder '.', '/vagrant', disabled: true
+    debian.vm.provider :virtualbox do |vb|
+      vb.name = "Debian - Vagrant"
+	  vb.memory = 1028
+      vb.cpus = 2
+	  vb.customize ["modifyvm", :id, "--vram", "16"]
+    end
+  end
+  # Fedora
+  config.vm.define "Fedora" do |fedora|
+    fedora.vm.box = "fedora/36-cloud-base"
+    fedora.vm.hostname = "fedora-vagrant"
+    fedora.vm.network :private_network, ip: "192.168.56.202"
+    fedora.vm.provision "final", type: "shell", inline: $minion2
+	fedora.vm.synced_folder '.', '/vagrant', disabled: true
+    fedora.vm.provider :virtualbox do |vb|
+      vb.name = "Fedora - Vagrant"
+	  vb.memory = 1028
+      vb.cpus = 2
+	  vb.customize ["modifyvm", :id, "--vram", "16"]
+    end 
+  end
+  # Windows...
+  config.vm.define "Windows" do |window|  
+  # Basic
+	window.vm.box = "Microsoft/EdgeOnWindows10"
+	window.vm.guest = :windows
+ 	window.vm.communicator = ENV['config'] || "winrm"
+	window.vm.synced_folder '.', '/vagrant', disabled: true
+  #  window.vm.hostname = "window"
+  # WinRM
+	window.winrm.username = "IEUser"
+	window.winrm.password = "Passw0rd!"
+	window.vm.boot_timeout = 600
+	window.vm.graceful_halt_timeout = 600
+  # Network
+	window.vm.network :private_network, ip: "192.168.56.203", auto_config: false
+
+  # Config SSH
+	window.ssh.username="IEUser"
+	window.ssh.password="Passw0rd!"
+	window.ssh.insert_key = false
+	window.ssh.sudo_command = ''
+	window.ssh.shell = 'sh -l'
+
+  # Machine stuff
+    window.vm.provider :virtualbox do |vb|
+      vb.name = "Windows - Vagrant"
+	  vb.memory = 4096
+      vb.cpus = 2
+	  vb.customize ["modifyvm", :id, "--vram", "256"]
+	end
+  # Port Forwards  
+	window.vm.network :forwarded_port, guest: 3389, host: 3389
+	window.vm.network :forwarded_port, guest: 3389, host: 3389
+	window.vm.network :forwarded_port, guest: 5985, host: 5985, id: "winrm", auto_correct: true
+  # SSH Provision
+	if ENV['config'] == "ssh"
+  	# Enabling RDP & WINRM:
+  		window.vm.provision "shell",
+    		binary: true,
+    		privileged: false,
+    		inline: <<-SHELL
+    			# Enable RDP for IEUser
+				reg add "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
+    			netsh advfirewall firewall set rule group="remote desktop" new enable=yes
+   			 	net localgroup "remote desktop users" IEUser /add
+    			# winrm - Switch to private network
+    			/cygdrive/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -InputFormat None -NoProfile -ExecutionPolicy Bypass -Command '$networkListManager = [Activator]::CreateInstance([Type]::GetTypeFromCLSID([Guid]"{DCB00C01-570F-4A9B-8D69-199FDBA5723B}")) ; $connections = $networkListManager.GetNetworkConnections() ; $connections | % {$_.GetNetwork().SetCategory(1)}'
+					sc config winrm start= auto
+					cmd /C "winrm quickconfig -q"
+					exit
+			SHELL
+  # WinRM Provision
+	else		
+  		window.vm.provision "shell",
+  			privileged: true,
+  			powershell_elevated_interactive: true,
+  			inline: <<-SHELL2
+				New-Item -ItemType Directory -Force -Path C:/Temp
+				[Net.ServicePointManager]::SecurityProtocol = "Tls, Tls11, Tls12, Ssl3" # Use with caution
+				Invoke-WebRequest -Uri https://winbootstrap.saltproject.io -OutFile C:/Temp/bootstrap-salt.ps1
+				Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope CurrentUser
+				C:/Temp/bootstrap-salt.ps1
+				Set-ExecutionPolicy -ExecutionPolicy Undefined -Scope CurrentUser   
+				Set-Content -Path 'C:/ProgramData/Salt Project/Salt/conf/minion_id' -Value 'WinSaltTest'
+				Add-Content -Path 'C:/ProgramData/Salt Project/Salt/conf/minion' 'master: 192.168.56.1'
+				net stop salt-minion
+				net start salt-minion
+  			SHELL2
+	end
+  end
+end
