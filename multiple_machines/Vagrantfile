@@ -16,7 +16,7 @@ COMMON
 
 $minion = <<MINION
 apt install salt-minion -qy
-sed -i 's/\#master\:.*/master\:\ MASTER_IP_HERE' /etc/salt/minion
+sed -i 's/\#master\:.*/master\:\ MASTER_IP_HERE/g' /etc/salt/minion
 systemctl restart salt-minion
 MINION
 
