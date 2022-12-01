@@ -28,4 +28,4 @@ vagrant destroy
 Just a heads up:**   
 Windows creation and provision will take a while!   
 Also it might take a while after the creation for WindowsMinion to show up to your Master.   
-There is added wait timer because of that in the provision part, but it might still take a litle longer.
+There is an added wait timer because of that in the provision part, but it might still take a little longer.
