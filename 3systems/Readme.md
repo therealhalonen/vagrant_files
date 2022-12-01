@@ -1,17 +1,31 @@
-If you use this, for the first time, run it with:
-```
-config=ssh vagrant up
-```
-When everything is configured and machines are up   
-Run:   
-```
-vagrant up --provision
-```
-After that everything should work   
+Contains a Vagrant file to create:  
+- Debian server   
+- Fedora server   
+- Windows 10 Deskop   
 
----
-Next time you can just:
+Instructions:   
+To create/bring up all three machines:   
 ```
 vagrant up
 ```
-To lift machines up
+Or individual machine
+```
+vagrant up Debian
+vagrant up Fedora
+vagrant up Windows
+```
+Shutdown and restart with: 
+```
+vagrant halt
+vagrant reload
+```
+And of course the best part, to destroy everything: 
+```
+vagrant destroy
+```
+
+**Note:   
+Just a heads up:**   
+Windows creation and provision will take a while!   
+Also it might take a while after the creation for WindowsMinion to show up to your Master.   
+There is added wait timer because of that in the provision part, but it might still take a litle longer.
